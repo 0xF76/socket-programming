@@ -16,63 +16,83 @@
 
 #define MAXLINE 1024
 
-//#define SA struct sockaddr
-
 #define LISTENQ 4
 
 int
 main(int argc, char **argv)
 {
-	int				listenfd, connfd;
-	socklen_t			len;
-	char				buff[MAXLINE], str[INET6_ADDRSTRLEN+1];
-	time_t				ticks;
+	int	listenfd, connfd, err, n;
+	socklen_t len;
+	char buff[MAXLINE], str[INET6_ADDRSTRLEN+1];
+	time_t ticks;
 	struct sockaddr_in6	servaddr, cliaddr;
 
-        if ( (listenfd = socket(AF_INET6, SOCK_STREAM, 0)) < 0){
-                fprintf(stderr,"socket error : %s\n", strerror(errno));
-                return 1;
-        }
+	listenfd = socket(AF_INET6, SOCK_STREAM, 0);
 
-	bzero(&servaddr, sizeof(servaddr));
+	if(listenfd < 0) {
+		fprintf(stderr,"socket error : %s\n", strerror(errno));
+		return 1;
+	}
+
+	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin6_family = AF_INET6;
+
 	if(argc == 1)
-		servaddr.sin6_addr   = in6addr_any;
-	else{
-		if( inet_pton(AF_INET6, argv[1], &servaddr.sin6_addr) != 1 ){
+		servaddr.sin6_addr = in6addr_any;
+	else {
+		err = inet_pton(AF_INET6, argv[1], &servaddr.sin6_addr);
+		if(err != 1 ){
 			printf("ERROR: Address format error\n");
 			return -1;
 		}
 	}
-	servaddr.sin6_port   = htons(13);	/* daytime server */
+	
+	servaddr.sin6_port = htons(13);	/* daytime server */
 
-        if ( bind( listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0){
-                fprintf(stderr,"bind error : %s\n", strerror(errno));
-                return 1;
-        }
+	err = bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+	if (err < 0) {
+		fprintf(stderr,"bind error : %s\n", strerror(errno));
+		return 1;
+	}
 
-
-        if ( listen(listenfd, LISTENQ) < 0){
-                fprintf(stderr,"listen error : %s\n", strerror(errno));
-                return 1;
-        }
+	err = listen(listenfd, LISTENQ);
+	if (err < 0) {
+		fprintf(stderr,"listen error : %s\n", strerror(errno));
+		return 1;
+	}
 
 	fprintf(stderr,"Waiting for clients ... \n");
-	for ( ; ; ) {
-		len = sizeof(cliaddr);
-        	if ( (connfd = accept(listenfd, (struct sockaddr *) &cliaddr, &len)) < 0){
-                	fprintf(stderr,"accept error : %s\n", strerror(errno));
-                	continue;
-        	}
 
-		bzero(str, sizeof(str));
-	   	inet_ntop(AF_INET6, (struct sockaddr  *) &cliaddr.sin6_addr,  str, sizeof(str));
+	while(1) {
+		len = sizeof(cliaddr);
+		
+		connfd = accept(listenfd, (struct sockaddr *) &cliaddr, &len);
+		if (connfd < 0) {
+			fprintf(stderr,"accept error : %s\n", strerror(errno));
+			continue;
+		}
+
+		memset(str, 0, sizeof(str));
+		inet_ntop(AF_INET6, (struct sockaddr  *) &cliaddr.sin6_addr,  str, sizeof(str));
 		printf("Connection from %s\n", str);
 
-        	ticks = time(NULL);
-        	snprintf(buff, sizeof(buff), "%.24s\r\n", ctime(&ticks));
-        	if( write(connfd, buff, strlen(buff))< 0 )
-                	fprintf(stderr,"write error : %s\n", strerror(errno));
+		memset(buff, 0, sizeof(buff));
+		n = read(connfd, buff, sizeof(buff));
+		if (n < 0) {
+			fprintf(stderr,"read error : %s\n", strerror(errno));
+			close(connfd);
+			continue;
+		}
+
+		printf("Nickname: %s\n", buff);
+
+		ticks = time(NULL);
+		snprintf(buff, sizeof(buff), "%.24s\r\n", ctime(&ticks));
+		
+		err = write(connfd, buff, strlen(buff));
+		if (err < 0) {
+			fprintf(stderr,"write error : %s\n", strerror(errno));
+		}
 		close(connfd);
 	}
 }
